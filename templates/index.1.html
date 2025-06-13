@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>动态获取图片尺寸的瀑布流</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .waterfall-container {
+            position: relative;
+            margin: 0 auto;
+            min-height: 100vh;
+            
+        }
+
+        .waterfall-item {
+            position: absolute;
+            width: calc(100% / var(--columns, 4) - 10px);
+            margin: 5px;
+            transition: all 0.3s ease;
+            background-color: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+            
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+
+        .waterfall-item img {
+            width: 100%;
+            display: block;
+            transition: opacity 0.3s ease;
+        }
+
+        .waterfall-item .img-placeholder {
+            width: 100%;
+            background-color: #eee;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+        }
+
+        .waterfall-item .content {
+            padding: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+            color: #666;
+        }
+
+        img {
+			transition: all 0.5s;
+		}
+
+		img:hover {
+			transform: scale(1.1);
+			/*图片放大1.1倍*/
+			margin-top: 30px;
+			/*鼠标悬停时上移30px*/
+			/* margin-top: 0px;和hover的margin-top有对比，原无30,现在0，相当于上移了,30px */
+			box-shadow: 0 0 20px 2px #918f8f;
+			/*盒子阴影*/
+			transition: all 0.5s;
+			/*持续时间*/
+
+		}
+
+    </style>
+</head>
+
+<body>
+    <div class="waterfall-container" id="waterfall">
+        <div class="loading">加载中，请稍候...</div>
+
+        <!-- 示例结构 - 实际使用时可以动态生成 -->
+         {% for img in imgs %}
+        <div class="waterfall-item">
+            <div class="img-placeholder">
+                <img data-src={{img.path}}>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const waterfallContainer = document.getElementById('waterfall');
+            let columnHeights = [];
+            let columnCount = 0;
+            let columnWidth = 0;
+            const gap = 10;
+
+            // 初始化瀑布流
+            async function initWaterfall() {
+                // 隐藏所有项目
+                const items = document.querySelectorAll('.waterfall-item');
+                items.forEach(item => item.style.display = 'none');
+
+                // 移除加载提示
+                const loading = document.querySelector('.loading');
+                if (loading) loading.remove();
+
+                // 计算列数
+                calculateColumns();
+
+                // 预加载所有图片并获取尺寸
+                await preloadImages();
+
+                // 定位所有项目
+                positionAllItems();
+
+                // 显示所有项目
+                items.forEach(item => item.style.display = 'block');
+
+                // 初始化懒加载
+                lazyLoadImages();
+            }
+
+            // 预加载图片并获取尺寸
+            function preloadImages() {
+                const images = document.querySelectorAll('.waterfall-item img[data-src]');
+                const promises = [];
+
+                images.forEach(img => {
+                    const promise = new Promise((resolve) => {
+                        const tempImg = new Image();
+                        tempImg.src = img.dataset.src;
+                        tempImg.onload = function () {
+                            // 保存自然尺寸到数据集
+                            img.dataset.naturalWidth = this.naturalWidth;
+                            img.dataset.naturalHeight = this.naturalHeight;
+                            resolve();
+                        };
+                        tempImg.onerror = function () {
+                            // 加载失败时使用默认尺寸
+                            img.dataset.naturalWidth = 800;
+                            img.dataset.naturalHeight = 600;
+                            resolve();
+                        };
+                    });
+                    promises.push(promise);
+                });
+
+                return Promise.all(promises);
+            }
+
+            // 计算列数和列宽
+            function calculateColumns() {
+                const containerWidth = waterfallContainer.offsetWidth;
+                const minColumnWidth = 250;
+                columnCount = Math.max(1, Math.floor(containerWidth / minColumnWidth));
+                columnWidth = containerWidth / columnCount;
+                waterfallContainer.style.setProperty('--columns', columnCount);
+                columnHeights = new Array(columnCount).fill(0);
+            }
+
+            // 定位所有项目
+            function positionAllItems() {
+                columnHeights = new Array(columnCount).fill(0);
+                const items = document.querySelectorAll('.waterfall-item');
+
+                items.forEach(item => {
+                    positionItem(item);
+                });
+
+                waterfallContainer.style.height = Math.max(...columnHeights) + 'px';
+            }
+
+            // 定位单个项目
+            function positionItem(itemElement) {
+                const img = itemElement.querySelector('img');
+                const width = parseInt(img.dataset.naturalWidth) || 800;
+                const height = parseInt(img.dataset.naturalHeight) || 600;
+                const aspectRatio = height / width;
+
+                const minHeight = Math.min(...columnHeights);
+                const columnIndex = columnHeights.indexOf(minHeight);
+                const left = columnIndex * columnWidth;
+                const top = minHeight;
+                const itemHeight = columnWidth * aspectRatio + 50; // 50是内容区域高度
+
+                columnHeights[columnIndex] += itemHeight + gap;
+
+                itemElement.style.left = `${left}px`;
+                itemElement.style.top = `${top}px`;
+
+                const placeholder = itemElement.querySelector('.img-placeholder');
+                placeholder.style.paddingBottom = `${aspectRatio * 100}%`;
+            }
+
+            // 懒加载图片（实际显示）
+            function lazyLoadImages() {
+                const lazyImages = document.querySelectorAll('.waterfall-item img[data-src]');
+
+                const observer = new IntersectionObserver((entries, observer) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const img = entry.target;
+                            img.src = img.dataset.src;
+                            img.onload = () => {
+                                img.style.opacity = '1';
+                                img.removeAttribute('data-src');
+                            };
+                            observer.unobserve(img);
+                        }
+                    });
+                }, {
+                    rootMargin: '0px 0px 200px 0px'
+                });
+
+                lazyImages.forEach(img => observer.observe(img));
+            }
+
+            // 窗口大小改变时重新计算
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(() => {
+                    calculateColumns();
+                    positionAllItems();
+                }, 200);
+            });
+
+            // 初始化
+            initWaterfall();
+
+            // 模拟滚动加载更多数据
+            window.addEventListener('scroll', () => {
+                if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
+                    console.log('加载更多数据...');
+                    // 这里可以添加加载更多数据的逻辑
+                    // 加载后需要再次调用 preloadImages() 和 positionAllItems()
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
