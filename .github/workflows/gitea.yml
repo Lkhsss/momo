@@ -1,0 +1,12 @@
+name: Gitea Actions Demo
+on:
+    workflow_dispatch:
+    # push:
+jobs:
+  Explore-Gitea-Actions:
+    runs-on: rust-latest
+    steps:
+      - name: 编译
+        run: |
+          cargo b -r
+
